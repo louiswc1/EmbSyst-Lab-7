@@ -1,0 +1,81 @@
+#include "mbed.h"
+
+// set up pins
+AnalogIn ldr_pin(A4);  // ldr on A4
+PwmOut led_pin(PA_0);  // led on PA_0
+
+UnbufferedSerial serial(USBTX, USBRX, 115200);  // serial for debug
+
+//filters
+float filter_coeff = 0.1;  // how much to smooth
+float filtered_value = 0.0;  // filtered ldr value
+
+//function to convert float to string
+void float_to_str(float num, char* str) {
+    int whole = (int)num;  // get whole part
+    int frac = (int)((num - whole) * 100);  //get fraction part (2 digits)
+
+    // add whole part to string
+    int i = 0;
+    if (whole == 0) {
+        str[i++] = '0';
+    } else {
+        while (whole > 0) {
+            str[i++] = '0' + (whole % 10);
+            whole /= 10;
+        }
+    }
+    // reverse whole part
+    int len = i;
+    for (int j = 0; j < len / 2; j++) {
+        char temp = str[j];
+        str[j] = str[len - j - 1];
+        str[len - j - 1] = temp;
+    }
+
+    str[i++] = '.';
+
+    // add fraction part
+    str[i++] = '0' + (frac / 10);  // first digit
+    str[i++] = '0' + (frac % 10);  // second digit
+
+    // end string
+    str[i] = '\0';
+}
+
+int main() {
+    // set pwm period
+    led_pin.period(0.01f);  // 100 Hz frequency
+
+    while (1) {
+        //read raw analogue ldr value
+        float ldr_value = ldr_pin.read();  // should be between 0.0 and 1.0
+
+        // send raw ldr value
+        serial.write("Raw LDR: ", 9);
+        char raw_str[10];
+        float_to_str(ldr_value, raw_str);
+        serial.write(raw_str, strlen(raw_str));
+
+        //apply filter
+        filtered_value = filter_coeff * ldr_value + (1 - filter_coeff) * filtered_value;
+
+        // send filtered ldr value
+        serial.write(", Filtered LDR: ", 16);
+        char filtered_str[10];
+        float_to_str(filtered_value, filtered_str);
+        serial.write(filtered_str, strlen(filtered_str));
+
+        //printed pwm value to check LED was dimming as hard to see in bright room
+        serial.write(", PWM: ", 7);
+        char pwm_str[10];
+        float_to_str(filtered_value, pwm_str);
+        serial.write(pwm_str, strlen(pwm_str));
+
+        serial.write("\n", 1);
+
+        led_pin.write(filtered_value);  // set pwm duty cycle to filtered LDR value
+
+        ThisThread::sleep_for(100ms);
+    }
+}
